@@ -3,105 +3,60 @@ name: Build NowBrief APK
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:   # allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-android:
-    name: Build Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
 
     steps:
-      # ── 1. Checkout ───────────────────────────────────────────────────────
-      - name: Checkout repository
+      # Checkout
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Node.js ────────────────────────────────────────────────────────
-      - name: Set up Node.js 20
+      # Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
 
-      # ── 3. Java 17 ────────────────────────────────────────────────────────
-      - name: Set up JDK 17
+      # ✅ Install dependencies FIRST (CRITICAL)
+      - name: Install npm dependencies
+        run: npm install
+
+      # ✅ Verify plugin exists (debug)
+      - name: Verify plugin
+        run: |
+          ls node_modules/@react-native
+          ls node_modules/@react-native/gradle-plugin
+
+      # Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: 17
 
-      # ── 4. Android SDK ────────────────────────────────────────────────────
-      - name: Set up Android SDK
+      # Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK components
+      - name: Install SDK
         run: |
-          sdkmanager "platforms;android-35" \
-                     "build-tools;34.0.0" \
-                     "ndk;26.1.10909125" \
-                     "platform-tools"
+          sdkmanager "platforms;android-35" "build-tools;34.0.0" "platform-tools"
 
-      # ── 5. Install JS dependencies ────────────────────────────────────────
-      - name: Install npm dependencies
-        run: npm ci
-
-      # ── 6. Gradle cache ──────────────────────────────────────────────────
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-
-      # ── 7. Make gradlew executable ───────────────────────────────────────
+      # Gradle permission
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      # ── 8. Download Gradle wrapper jar ───────────────────────────────────
-      # The jar is not committed to git (binary). Actions downloads it here.
-      - name: Download Gradle wrapper jar
-        run: |
-          mkdir -p android/gradle/wrapper
-          curl -fsSL \
-            "https://raw.githubusercontent.com/gradle/gradle/v8.6.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o android/gradle/wrapper/gradle-wrapper.jar
-
-      # ── 9. Build debug APK ───────────────────────────────────────────────
-      - name: Build debug APK
+      # 🔥 BUILD
+      - name: Build APK
         working-directory: android
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --stacktrace
 
-      # ── 10. Upload APK artifact ──────────────────────────────────────────
-      - name: Upload debug APK
+      # Upload APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NowBrief-debug-${{ github.run_number }}
+          name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
-
-      # ── 11. (Optional) Release build — only on version tags ──────────────
-      # Uncomment and add KEYSTORE_* secrets to enable signed release builds.
-      #
-      # - name: Build release APK
-      #   if: startsWith(github.ref, 'refs/tags/v')
-      #   working-directory: android
-      #   env:
-      #     NOWBRIEF_UPLOAD_STORE_FILE:     ${{ secrets.KEYSTORE_FILE }}
-      #     NOWBRIEF_UPLOAD_KEY_ALIAS:      ${{ secrets.KEYSTORE_ALIAS }}
-      #     NOWBRIEF_UPLOAD_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
-      #     NOWBRIEF_UPLOAD_KEY_PASSWORD:   ${{ secrets.KEYSTORE_KEY_PASSWORD }}
-      #   run: ./gradlew assembleRelease --no-daemon
-      #
-      # - name: Upload release APK
-      #   if: startsWith(github.ref, 'refs/tags/v')
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: NowBrief-release-${{ github.ref_name }}
-      #     path: android/app/build/outputs/apk/release/app-release.apk
-      #     retention-days: 90
