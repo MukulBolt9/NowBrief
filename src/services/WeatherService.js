@@ -1,116 +1,122 @@
 // src/services/WeatherService.js
-// Real weather data from OpenWeatherMap (free tier)
-// Get your key at: https://openweathermap.org/api
+// Uses Open-Meteo (https://open-meteo.com) — 100% free, no API key, no signup.
+// Reverse geocoding via Open-Meteo Geocoding API.
 
 import axios from 'axios';
-import Geolocation from 'react-native-geolocation-service';
 import { PermissionsAndroid, Platform } from 'react-native';
+import Geolocation from 'react-native-geolocation-service';
 
-// ⚠️  Replace with your own free key from openweathermap.org
-const OWM_API_KEY = 'YOUR_OPENWEATHERMAP_API_KEY';
-const BASE_URL    = 'https://api.openweathermap.org/data/2.5';
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+const GEO_URL      = 'https://geocoding-api.open-meteo.com/v1/reverse';
 
-const WEATHER_ICONS = {
-  '01d':'☀️','01n':'🌙','02d':'⛅','02n':'⛅',
-  '03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️',
-  '09d':'🌧','09n':'🌧','10d':'🌦','10n':'🌦',
-  '11d':'⛈','11n':'⛈','13d':'❄️','13n':'❄️','50d':'🌫','50n':'🌫',
+const WMO = {
+  0:  { label: 'Clear sky',            icon: '☀️' },
+  1:  { label: 'Mainly clear',         icon: '🌤' },
+  2:  { label: 'Partly cloudy',        icon: '⛅' },
+  3:  { label: 'Overcast',             icon: '☁️' },
+  45: { label: 'Foggy',                icon: '🌫' },
+  48: { label: 'Icy fog',              icon: '🌫' },
+  51: { label: 'Light drizzle',        icon: '🌦' },
+  53: { label: 'Drizzle',              icon: '🌦' },
+  55: { label: 'Heavy drizzle',        icon: '🌧' },
+  61: { label: 'Slight rain',          icon: '🌧' },
+  63: { label: 'Rain',                 icon: '🌧' },
+  65: { label: 'Heavy rain',           icon: '🌧' },
+  71: { label: 'Slight snow',          icon: '❄️' },
+  73: { label: 'Snow',                 icon: '❄️' },
+  75: { label: 'Heavy snow',           icon: '❄️' },
+  80: { label: 'Showers',              icon: '🌦' },
+  81: { label: 'Heavy showers',        icon: '🌧' },
+  95: { label: 'Thunderstorm',         icon: '⛈' },
+  99: { label: 'Thunderstorm + hail',  icon: '⛈' },
 };
 
-class WeatherService {
+function wmo(code) { return WMO[code] || { label: 'Unknown', icon: '🌤' }; }
+
+class WeatherServiceClass {
   constructor() {
     this.cachedLocation = null;
+    this.cachedCity     = null;
+  }
+
+  async _requestPermission() {
+    if (Platform.OS !== 'android') return true;
+    const r = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      { title: 'NowBrief', message: 'Needs location for local weather', buttonPositive: 'Allow' },
+    );
+    return r === PermissionsAndroid.RESULTS.GRANTED;
   }
 
   async _getLocation() {
     if (this.cachedLocation) return this.cachedLocation;
-
-    if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        { title: 'Now Brief needs location', message: 'For live local weather', buttonPositive: 'Allow' },
-      );
-      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        // Fall back to Kolkata
-        return { latitude: 22.5726, longitude: 88.3639 };
-      }
-    }
-
-    return new Promise((resolve, reject) => {
+    await this._requestPermission();
+    return new Promise(resolve => {
       Geolocation.getCurrentPosition(
         pos => {
-          const loc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-          this.cachedLocation = loc;
-          resolve(loc);
+          this.cachedLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          resolve(this.cachedLocation);
         },
-        () => resolve({ latitude: 22.5726, longitude: 88.3639 }), // Kolkata fallback
+        () => resolve({ lat: 22.5726, lon: 88.3639 }),
         { enableHighAccuracy: false, timeout: 10000 },
       );
     });
   }
 
-  async getCurrentWeather() {
-    const loc = await this._getLocation();
-    const res  = await axios.get(`${BASE_URL}/weather`, {
-      params: {
-        lat:   loc.latitude,
-        lon:   loc.longitude,
-        appid: OWM_API_KEY,
-        units: 'metric',
-      },
-      timeout: 8000,
-    });
+  async _reverseGeocode(lat, lon) {
+    if (this.cachedCity) return this.cachedCity;
+    try {
+      const r = await axios.get(GEO_URL, { params: { latitude: lat, longitude: lon, count: 1 }, timeout: 5000 });
+      const res = r.data?.results?.[0];
+      this.cachedCity = res?.name || res?.admin1 || 'Your City';
+      return this.cachedCity;
+    } catch (_) { return 'Your City'; }
+  }
 
-    const d = res.data;
+  async getCurrentWeather() {
+    const { lat, lon } = await this._getLocation();
+    const city = await this._reverseGeocode(lat, lon);
+    const res = await axios.get(FORECAST_URL, {
+      params: {
+        latitude: lat, longitude: lon,
+        current: 'temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,visibility,uv_index',
+        wind_speed_unit: 'kmh', timezone: 'auto',
+      },
+      timeout: 10000,
+    });
+    const c = res.data.current;
+    const w = wmo(c.weather_code);
     return {
-      city:        d.name,
-      country:     d.sys.country,
-      temp:        d.main.temp,
-      feelsLike:   d.main.feels_like,
-      humidity:    d.main.humidity,
-      description: d.weather[0].description,
-      icon:        WEATHER_ICONS[d.weather[0].icon] || '🌤',
-      wind:        Math.round(d.wind.speed * 3.6), // m/s → km/h
-      visibility:  d.visibility ? Math.round(d.visibility / 1000) : null,
-      uv:          null, // requires One Call API
-      code:        d.weather[0].id,
-      lat:         loc.latitude,
-      lon:         loc.longitude,
-      updatedAt:   new Date().toISOString(),
+      city, temp: c.temperature_2m, feelsLike: c.apparent_temperature,
+      humidity: c.relative_humidity_2m, wind: Math.round(c.wind_speed_10m),
+      visibility: c.visibility ? Math.round(c.visibility / 1000) : null,
+      uv: c.uv_index ?? null, description: w.label, icon: w.icon,
+      code: c.weather_code, lat, lon, updatedAt: new Date().toISOString(),
     };
   }
 
   async getForecast() {
-    const loc = await this._getLocation();
-    const res  = await axios.get(`${BASE_URL}/forecast`, {
+    const { lat, lon } = await this._getLocation();
+    const res = await axios.get(FORECAST_URL, {
       params: {
-        lat:   loc.latitude,
-        lon:   loc.longitude,
-        appid: OWM_API_KEY,
-        units: 'metric',
-        cnt:   8, // next 24h in 3h steps
+        latitude: lat, longitude: lon,
+        hourly: 'temperature_2m,weather_code,precipitation_probability',
+        forecast_days: 1, wind_speed_unit: 'kmh', timezone: 'auto',
       },
-      timeout: 8000,
+      timeout: 10000,
     });
-
-    return res.data.list.map(item => ({
-      time:        item.dt_txt,
-      temp:        Math.round(item.main.temp),
-      description: item.weather[0].description,
-      icon:        WEATHER_ICONS[item.weather[0].icon] || '🌤',
-      humidity:    item.main.humidity,
-      wind:        Math.round(item.wind.speed * 3.6),
+    const { time, temperature_2m, weather_code, precipitation_probability } = res.data.hourly;
+    return time.slice(0, 8).map((t, i) => ({
+      time: t, temp: Math.round(temperature_2m[i]),
+      icon: wmo(weather_code[i]).icon, label: wmo(weather_code[i]).label,
+      precipPct: precipitation_probability[i],
     }));
   }
 
-  getWeatherSummary(weather) {
-    if (!weather) return 'Weather data unavailable.';
-    const { city, temp, feelsLike, description, humidity, wind } = weather;
-    return (
-      `Currently ${Math.round(temp)}°C in ${city} with ${description}. ` +
-      `Feels like ${Math.round(feelsLike)}°C. Humidity at ${humidity}% and wind at ${wind} km/h.`
-    );
+  getWeatherSummary(w) {
+    if (!w) return 'Weather unavailable.';
+    return `Currently ${Math.round(w.temp)}°C in ${w.city} — ${w.description}. Feels like ${Math.round(w.feelsLike)}°C. Humidity ${w.humidity}%, wind ${w.wind} km/h.`;
   }
 }
 
-export const WeatherService = new WeatherService();
+export const WeatherService = new WeatherServiceClass();

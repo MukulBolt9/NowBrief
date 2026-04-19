@@ -1,61 +1,66 @@
 // App.js — Root of NowBrief
-// Sets up navigation, boots foreground service & notification scheduler
-
 import React, { useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator }  from '@react-navigation/stack';
-import { Platform, Linking }     from 'react-native';
-import { SafeAreaProvider }      from 'react-native-safe-area-context';
+import { NavigationContainer }       from '@react-navigation/native';
+import { createStackNavigator }      from '@react-navigation/stack';
+import { Platform, View, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider }          from 'react-native-safe-area-context';
 
-import HomeScreen               from './src/screens/HomeScreen';
-import LiveNotificationService  from './src/services/LiveNotificationService';
+import { UserProvider, useUser }     from './src/context/UserContext';
+import OnboardingScreen              from './src/screens/OnboardingScreen';
+import HomeScreen                    from './src/screens/HomeScreen';
+import ArticleScreen                 from './src/screens/ArticleScreen';
+import LiveNotificationService       from './src/services/LiveNotificationService';
 
 const Stack = createStackNavigator();
 
-// Deep-link config — tapping a notification opens the right screen
 const linking = {
   prefixes: ['nowbrief://'],
-  config:   {
-    screens: {
-      Home:    'home',
-      Weather: 'weather',
-      News:    'news',
-      Article: 'article',
-    },
-  },
+  config: { screens: { Home: 'home', Article: 'article' } },
 };
 
-export default function App() {
+function AppNavigator() {
+  const { userName, loaded } = useUser();
+
   useEffect(() => {
-    bootstrap();
-    return () => {
-      // Cleanup on unmount (dev only — prod keeps FG service alive)
-      LiveNotificationService.stopScheduler();
-    };
-  }, []);
+    if (!loaded || !userName) return;
+    (async () => {
+      await LiveNotificationService.init();
+      if (Platform.OS === 'android') await LiveNotificationService.startForegroundService();
+      LiveNotificationService.startScheduler();
+    })();
+    return () => LiveNotificationService.stopScheduler();
+  }, [loaded, userName]);
 
-  async function bootstrap() {
-    // 1. Create notification channels + request permissions
-    await LiveNotificationService.init();
-
-    // 2. Start Android Foreground Service so we survive background kill
-    if (Platform.OS === 'android') {
-      await LiveNotificationService.startForegroundService();
-    }
-
-    // 3. Start timed message scheduler (fires Good morning, news, weather etc.)
-    LiveNotificationService.startScheduler();
-
-    console.log('[NowBrief] App bootstrapped ✓');
+  if (!loaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D47A1' }}>
+        <ActivityIndicator color="#fff" size="large" />
+      </View>
+    );
   }
 
   return (
+    <NavigationContainer linking={linking}>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!userName ? (
+          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+        ) : (
+          <>
+            <Stack.Screen name="Home"    component={HomeScreen} />
+            <Stack.Screen name="Article" component={ArticleScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
     <SafeAreaProvider>
-      <NavigationContainer linking={linking}>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Home"    component={HomeScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <UserProvider>
+        <AppNavigator />
+      </UserProvider>
     </SafeAreaProvider>
   );
 }
