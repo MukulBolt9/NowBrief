@@ -1,0 +1,87 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+/**
+ * React Native configuration block.
+ * hermesEnabled is already set in gradle.properties.
+ */
+react {
+    // JS bundle entry point
+    entryFile = file("../../index.js")
+    // hermesEnabled = (findProperty("hermesEnabled") ?: true).toBoolean()
+}
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    namespace "com.nowbrief"
+
+    defaultConfig {
+        applicationId "com.nowbrief"
+        minSdk rootProject.ext.minSdkVersion
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            if (project.hasProperty('NOWBRIEF_UPLOAD_STORE_FILE')) {
+                storeFile     file(NOWBRIEF_UPLOAD_STORE_FILE)
+                storePassword NOWBRIEF_UPLOAD_STORE_PASSWORD
+                keyAlias      NOWBRIEF_UPLOAD_KEY_ALIAS
+                keyPassword   NOWBRIEF_UPLOAD_KEY_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Use upload keystore if configured, otherwise fall back to debug for local builds
+            signingConfig project.hasProperty('NOWBRIEF_UPLOAD_STORE_FILE')
+                ? signingConfigs.release
+                : signingConfigs.debug
+            minifyEnabled  true
+            shrinkResources false   // RN bundles can false-positive with shrinkResources
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    // React Native (BOM managed via Gradle plugin)
+    implementation("com.facebook.react:react-android")
+    implementation("com.facebook.react:hermes-android")
+
+    // AndroidX
+    implementation "androidx.core:core-ktx:1.12.0"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+
+    // Foreground Service (react-native-foreground-service / VIForegroundService)
+    implementation project(':react-native-foreground-service')
+
+    // Push Notifications
+    implementation project(':react-native-push-notification')
+    implementation 'com.google.firebase:firebase-messaging:23.4.1'
+}

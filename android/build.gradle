@@ -1,0 +1,21 @@
+// Top-level build file for NowBrief
+buildscript {
+    ext {
+        buildToolsVersion = "34.0.0"
+        minSdkVersion     = 24
+        compileSdkVersion = 35
+        targetSdkVersion  = 35
+        ndkVersion        = "26.1.10909125"
+        kotlinVersion     = "1.9.22"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.3.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
