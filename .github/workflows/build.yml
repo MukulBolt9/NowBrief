@@ -26,26 +26,21 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ?? Force correct Gradle (fix your error)
-      - name: Fix Gradle Version
+      # ?? Install Gradle manually
+      - name: Install Gradle
         run: |
-          cd android
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-all.zip" > gradle/wrapper/gradle-wrapper.properties
+          sudo apt-get update
+          sudo apt-get install -y gradle
 
-      # Give permission
-      - name: Grant permission
-        run: chmod +x android/gradlew || true
-
-      # Build APK
+      # ?? Build without gradlew
       - name: Build APK
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon
+          gradle assembleRelease --no-daemon
 
-      # Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
