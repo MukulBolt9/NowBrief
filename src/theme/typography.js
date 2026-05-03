@@ -1,0 +1,1 @@
+export const Typography={h1:{fontSize:28,fontWeight:'800',letterSpacing:-1},h2:{fontSize:22,fontWeight:'700'},bodyL:{fontSize:16,fontWeight:'400'},body:{fontSize:15,fontWeight:'400'},bodyS:{fontSize:13,fontWeight:'400'},caption:{fontSize:11,fontWeight:'400'}};
