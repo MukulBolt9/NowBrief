@@ -12,9 +12,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Show project structure
-        run: ls -R
-
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
@@ -32,20 +29,23 @@ jobs:
       - name: Setup Android
         uses: android-actions/setup-android@v3
 
-      - name: Prepare Gradle Wrapper
+      # ?? Force correct Gradle (fix your error)
+      - name: Fix Gradle Version
         run: |
           cd android
-          if [ ! -f gradlew ]; then
-            echo "gradlew missing, generating..."
-            gradle wrapper
-          fi
-          chmod +x gradlew
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-all.zip" > gradle/wrapper/gradle-wrapper.properties
 
+      # Give permission
+      - name: Grant permission
+        run: chmod +x android/gradlew || true
+
+      # Build APK
       - name: Build APK
         run: |
           cd android
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon
 
+      # Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
