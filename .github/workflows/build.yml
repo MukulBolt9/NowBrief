@@ -12,6 +12,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Show project structure
+        run: ls -R
+
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
@@ -26,11 +29,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Setup Android
         uses: android-actions/setup-android@v3
 
-      - name: Give permission to gradlew
-        run: chmod +x android/gradlew
+      - name: Prepare Gradle Wrapper
+        run: |
+          cd android
+          if [ ! -f gradlew ]; then
+            echo "gradlew missing, generating..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
 
       - name: Build APK
         run: |
